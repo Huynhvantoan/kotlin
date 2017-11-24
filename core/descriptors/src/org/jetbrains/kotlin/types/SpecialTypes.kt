@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,12 @@
 
 package org.jetbrains.kotlin.types
 
+import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.storage.StorageManager
+import org.jetbrains.kotlin.types.checker.NewCapturedType
+import org.jetbrains.kotlin.types.checker.NewTypeVariableConstructor
 
 abstract class DelegatingSimpleType : SimpleType() {
     protected abstract val delegate: SimpleType
@@ -54,4 +57,50 @@ class LazyWrappedType(storageManager: StorageManager, computation: () -> KotlinT
     override val delegate: KotlinType get() = lazyValue()
 
     override fun isComputed(): Boolean = lazyValue.isComputed()
+}
+
+class DefinitelyNotNullType(val original: UnwrappedType) : DelegatingSimpleType(), CustomTypeVariable {
+    companion object {
+        fun makesSenseToBeDefinitelyNotNull(type: UnwrappedType): Boolean =
+                type.constructor is NewTypeVariableConstructor ||
+                type.constructor.declarationDescriptor is TypeParameterDescriptor ||
+                type is NewCapturedType
+    }
+
+    override val delegate: SimpleType
+        get() = original.lowerIfFlexible()
+
+    override val isMarkedNullable: Boolean
+        get() = false
+
+    override val isTypeVariable: Boolean
+        get() = delegate.constructor is NewTypeVariableConstructor ||
+                delegate.constructor.declarationDescriptor is TypeParameterDescriptor
+
+    override fun substitutionResult(replacement: KotlinType): KotlinType {
+        val unwrappedType = replacement.unwrap()
+        return when (unwrappedType) {
+            is DefinitelyNotNullType -> unwrappedType
+            else -> DefinitelyNotNullType(unwrappedType)
+        }
+    }
+
+    override fun replaceAnnotations(newAnnotations: Annotations): DefinitelyNotNullType =
+            DefinitelyNotNullType(delegate.replaceAnnotations(newAnnotations))
+
+    override fun makeNullableAsSpecified(newNullability: Boolean): SimpleType =
+            if (newNullability) delegate.makeNullableAsSpecified(newNullability) else this
+
+    override fun toString(): String = "${super.toString()}!!"
+}
+
+val KotlinType.isDefinitelyNotNullType: Boolean
+    get() = unwrap() is DefinitelyNotNullType
+
+fun UnwrappedType.makeReallyNotNull(): UnwrappedType {
+    return when {
+        this is DefinitelyNotNullType -> this
+        DefinitelyNotNullType.makesSenseToBeDefinitelyNotNull(this) -> DefinitelyNotNullType(this)
+        else -> this.makeNullableAsSpecified(false)
+    }
 }

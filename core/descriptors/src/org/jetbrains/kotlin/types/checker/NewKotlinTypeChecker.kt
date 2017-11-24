@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ object StrictEqualityTypeChecker {
 
     fun strictEqualTypes(a: SimpleType, b: SimpleType): Boolean {
         if (a.isMarkedNullable != b.isMarkedNullable
+            || a.isDefinitelyNotNullType != b.isDefinitelyNotNullType
             || a.constructor != b.constructor
             || a.arguments.size != b.arguments.size
         ) {
@@ -407,13 +408,19 @@ object NullabilityChecker {
         // superType is actually nullable
         if (superType.isMarkedNullable) return true
 
+        // i.e. subType is definitely not null
+        if (subType.isDefinitelyNotNullType) return true
+
         // i.e. subType is not-nullable
         if (hasNotNullSupertype(subType, SupertypesPolicy.LowerIfFlexible)) return true
+
+        // i.e. subType hasn't not-null supertype and isn't definitely not-null, but superType is definitely not-null
+        if (superType.isDefinitelyNotNullType) return false
 
         // i.e subType hasn't not-null supertype, but superType has
         if (hasNotNullSupertype(superType, SupertypesPolicy.UpperIfFlexible)) return false
 
-        // both superType and subType hasn't not-null supertype.
+        // both superType and subType hasn't not-null supertype and are not definitely not null.
 
         /**
          * If we still don't know, it means, that superType is not classType, for example -- type parameter.
@@ -464,7 +471,7 @@ val SimpleType.isClassType: Boolean get() = constructor.declarationDescriptor is
 val SimpleType.isSingleClassifierType: Boolean
     get() = !isError &&
             constructor.declarationDescriptor !is TypeAliasDescriptor &&
-            (constructor.declarationDescriptor != null || this is CapturedType || this is NewCapturedType)
+            (constructor.declarationDescriptor != null || this is CapturedType || this is NewCapturedType || this is DefinitelyNotNullType)
 
 val SimpleType.isIntersectionType: Boolean
     get() = constructor is IntersectionTypeConstructor

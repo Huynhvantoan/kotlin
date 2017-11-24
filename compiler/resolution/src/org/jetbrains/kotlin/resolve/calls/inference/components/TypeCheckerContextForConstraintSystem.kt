@@ -24,7 +24,6 @@ import org.jetbrains.kotlin.types.checker.*
 import org.jetbrains.kotlin.types.typeUtil.builtIns
 import org.jetbrains.kotlin.types.typeUtil.contains
 import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
-import org.jetbrains.kotlin.types.typeUtil.makeNullable
 
 abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorTypeEqualsToAnything = true, allowedTypeVariable = false) {
 
@@ -145,13 +144,7 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
     // we can't use constraint (T & Any .. T) in the latter, because non-platform type with type variables is incorrect
     private fun addLowerConstraintWithSimpleSubtype(typeVariable: FlexibleType, subType: SimpleType) {
         assertFlexibleTypeVariable(typeVariable)
-
-        val constraintType = if (isMyTypeVariable(subType))
-            KotlinTypeFactory.flexibleType(subType.makeNullableAsSpecified(false), subType.makeNullableAsSpecified(true))
-        else
-            KotlinTypeFactory.flexibleType(subType.definitelyNotNull(), subType)
-
-        addLowerConstraint(typeVariable.constructor, constraintType)
+        addLowerConstraint(typeVariable.constructor, KotlinTypeFactory.flexibleType(subType.makeSimpleTypeReallyNotNull(), subType))
     }
 
     // (Foo..Bar) <: T! -- (Foo & Any .. Bar) <: T
@@ -161,33 +154,25 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
         val lowerBound = subType.lowerBound
         val upperBound = subType.upperBound
 
-        if (isMyTypeVariable(lowerBound) || isMyTypeVariable(upperBound)) {
-            assertFlexibleTypeVariable(subType)
-            // This means that we are trying to add constraint like T! <: A!
-            addLowerConstraint(typeVariable.constructor, subType)
-            return
-        }
-
-        addLowerConstraint(typeVariable.constructor, KotlinTypeFactory.flexibleType(lowerBound.definitelyNotNull(), upperBound))
+        addLowerConstraint(typeVariable.constructor, KotlinTypeFactory.flexibleType(lowerBound.makeSimpleTypeReallyNotNull(), upperBound))
     }
 
     // Foo <: T or
     // Foo <: T? -- Foo & Any <: T
     private fun addLowerConstraintForSimpleType(typeVariable: SimpleType, subType: UnwrappedType) {
         if (typeVariable.isMarkedNullable)
-            addLowerConstraint(typeVariable.constructor, subType.definitelyNotNull())
+            addLowerConstraint(typeVariable.constructor, subType.makeReallyNotNull().unwrap())
         else
             addLowerConstraint(typeVariable.constructor, subType)
     }
-
-    private fun UnwrappedType.definitelyNotNull(): UnwrappedType = intersectTypes(listOf(this, this.builtIns.anyType))
-    private fun SimpleType.definitelyNotNull(): SimpleType = intersectTypes(listOf(this, this.builtIns.anyType))
 
     private fun assertFlexibleTypeVariable(typeVariable: FlexibleType) {
         assert(typeVariable.lowerBound == typeVariable.upperBound.makeNotNullable()) {
             "Flexible type variable ($typeVariable) should only have platform representation, i.e. (T..T?)"
         }
     }
+
+    fun SimpleType.makeSimpleTypeReallyNotNull(): SimpleType = this.makeReallyNotNull() as SimpleType
 
     /**
      * T! <: Foo <=> T <: Foo
@@ -197,6 +182,9 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
     private fun simplifyUpperConstraint(typeVariable: UnwrappedType, superType: UnwrappedType): Boolean {
         @Suppress("NAME_SHADOWING")
         val typeVariable = typeVariable.lowerIfFlexible()
+
+        @Suppress("NAME_SHADOWING")
+        val superType = if (typeVariable is DefinitelyNotNullType) superType.makeNullableAsSpecified(true) else superType
 
         addUpperConstraint(typeVariable.constructor, superType)
 

@@ -265,11 +265,19 @@ class TypeApproximator {
         val typeConstructor = type.constructor
 
         if (typeConstructor is NewCapturedTypeConstructor) {
-            assert(type is NewCapturedType) { // KT-16147
+            assert(type is NewCapturedType || (type is DefinitelyNotNullType && type.original is NewCapturedType)) { // KT-16147
                 "Type is inconsistent -- somewhere we create type with typeConstructor = $typeConstructor " +
                 "and class: ${type::class.java.canonicalName}. type.toString() = $type"
             }
-            return approximateCapturedType(type as NewCapturedType, conf, toSuper, depth)
+            return when (type) {
+                is NewCapturedType ->
+                    approximateCapturedType(type, conf, toSuper, depth)
+
+                is DefinitelyNotNullType ->
+                    approximateCapturedType(type.original as NewCapturedType, conf, toSuper, depth)?.let(::DefinitelyNotNullType)
+
+                else -> throw IllegalStateException("Non-captured type are not allowed here: $type")
+            }
         }
 
         if (typeConstructor is IntersectionTypeConstructor) {
