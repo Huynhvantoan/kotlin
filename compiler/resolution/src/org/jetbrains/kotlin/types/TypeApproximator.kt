@@ -39,6 +39,7 @@ open class TypeApproximatorConfiguration {
     open val dynamic get() = false // DynamicType
     open val rawType get() = false // RawTypeImpl
     open val errorType get() = false
+    open val definitelyNotNullType get() = true
     open val intersection: IntersectionStrategy = TO_COMMON_SUPERTYPE
 
     open val typeVariable: (TypeVariableTypeConstructor) -> Boolean = { false }
@@ -61,6 +62,7 @@ open class TypeApproximatorConfiguration {
     object PublicDeclaration : AllFlexibleSameValue() {
         override val allFlexible get() = true
         override val errorType get() = true
+        override val definitelyNotNullType get() = false
     }
 
     abstract class AbstractCapturedTypesApproximation(val approximatedCapturedStatus: CaptureStatus): TypeApproximatorConfiguration.AllFlexibleSameValue() {
@@ -273,8 +275,13 @@ class TypeApproximator {
                 is NewCapturedType ->
                     approximateCapturedType(type, conf, toSuper, depth)
 
-                is DefinitelyNotNullType ->
-                    approximateCapturedType(type.original as NewCapturedType, conf, toSuper, depth)?.let(::DefinitelyNotNullType)
+                is DefinitelyNotNullType -> {
+                    val approximatedCapturedType = approximateCapturedType(type.original as NewCapturedType, conf, toSuper, depth)
+                    return if (conf.definitelyNotNullType)
+                        approximatedCapturedType?.makeReallyNotNull()
+                    else
+                        approximatedCapturedType?.makeNullableAsSpecified(false)
+                }
 
                 else -> throw IllegalStateException("Non-captured type are not allowed here: $type")
             }
