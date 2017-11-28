@@ -73,8 +73,8 @@ class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
             if (it != OK) return it
         }
 
-        val plugLoadResult = PluginCliParser.loadPluginsSafe(arguments, configuration)
-        if (plugLoadResult != ExitCode.OK) return plugLoadResult
+        val pluginLoadResult = PluginCliParser.loadPluginsSafe(arguments, configuration)
+        if (pluginLoadResult != ExitCode.OK) return pluginLoadResult
 
         if (!arguments.script && arguments.buildFile == null) {
             for (arg in arguments.freeArgs) {
