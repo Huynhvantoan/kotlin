@@ -296,8 +296,8 @@ internal class Kotlin2JsSourceSetProcessor(
             val appliedPlugins = subpluginEnvironment.addSubpluginOptions(
                     project, kotlinTask, kotlinTask, null, null, sourceSet)
 
-            kotlinTask.kotlinOptions.outputFile = File(kotlinTask.outputFile).absolutePath
-            val outputDir = File(kotlinTask.outputFile).parentFile
+            kotlinTask.kotlinOptions.outputFile = kotlinTask.outputFile.absolutePath
+            val outputDir = kotlinTask.outputFile.parentFile
 
             if (FileUtil.isAncestor(outputDir, project.rootDir, false))
                 throw InvalidUserDataException(
