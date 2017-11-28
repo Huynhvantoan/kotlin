@@ -91,7 +91,11 @@ object TypeIntersector {
          * and other types is captured types or type parameters without not-null upper bound. Example: `String? & T` such types we should leave as is.
          */
         val correctNullability = inputTypes.mapTo(LinkedHashSet()) {
-            if (resultNullability == ResultNullability.NOT_NULL) it.makeNullableAsSpecified(false) else it
+            when (resultNullability) {
+                ResultNullability.NOT_NULL -> it.makeNullableAsSpecified(false)
+                ResultNullability.DEFINITELY_NOT_NULL -> DefinitelyNotNullType(it)
+                else -> it
+            }
         }
 
         return intersectTypesWithoutIntersectionType(correctNullability)
@@ -149,20 +153,19 @@ object TypeIntersector {
         },
         NOT_NULL {
             override fun combine(nextType: UnwrappedType) = this
+        },
+        DEFINITELY_NOT_NULL {
+            override fun combine(nextType: UnwrappedType) = this
         };
 
         abstract fun combine(nextType: UnwrappedType): ResultNullability
 
         protected val UnwrappedType.resultNullability: ResultNullability
-            get() {
-                if (isMarkedNullable) return ACCEPT_NULL
-
-                if (NullabilityChecker.isSubtypeOfAny(this)) {
-                    return NOT_NULL
-                }
-                else {
-                    return UNKNOWN
-                }
+            get() = when {
+                isMarkedNullable -> ACCEPT_NULL
+                isDefinitelyNotNullType -> DEFINITELY_NOT_NULL
+                NullabilityChecker.isSubtypeOfAny(this) -> NOT_NULL
+                else -> UNKNOWN
             }
     }
 }
